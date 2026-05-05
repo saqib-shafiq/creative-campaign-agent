@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Creative Campaign Agent</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+    <div class="bg-grid"></div>
+    <div class="bg-glow"></div>
+
+    <main class="page-wrapper">
+
+        <!-- Header -->
+        <header class="site-header">
+            <div class="header-badge">AI-Powered</div>
+            <h1 class="site-title">Creative Campaign<br><em>Agent</em></h1>
+            <p class="site-subtitle">Culturally intelligent marketing campaigns for Saudi Arabia — English &amp; Arabic</p>
+        </header>
+
+        <div class="content-grid">
+
+            <!-- Form Card -->
+            <section class="card form-card">
+                <div class="card-label">Campaign Brief</div>
+
+                <form id="campaignForm" novalidate>
+
+                    <div class="field-group">
+                        <label class="field-label" for="product_name">
+                            Product Name <span class="required">*</span>
+                        </label>
+                        <input
+                            type="text"
+                            id="product_name"
+                            name="product_name"
+                            class="field-input"
+                            placeholder="e.g., Mint &amp; Lemon"
+                            autocomplete="off"
+                        >
+                        <span class="field-error" id="err_product_name"></span>
+                    </div>
+
+                    <div class="field-group">
+                        <label class="field-label" for="product_desc">
+                            Product Description <span class="required">*</span>
+                        </label>
+                        <textarea
+                            id="product_desc"
+                            name="product_desc"
+                            class="field-input field-textarea"
+                            placeholder="A refreshing, sparkling drink made from natural ingredients."
+                            rows="3"
+                        ></textarea>
+                        <span class="field-error" id="err_product_desc"></span>
+                    </div>
+
+                    <div class="field-group">
+                        <label class="field-label" for="target_audience">
+                            Target Audience <span class="required">*</span>
+                        </label>
+                        <textarea
+                            id="target_audience"
+                            name="target_audience"
+                            class="field-input field-textarea"
+                            placeholder="Young people and students in Saudi cities who are looking for a healthy alternative to traditional soft drinks."
+                            rows="3"
+                        ></textarea>
+                        <span class="field-error" id="err_target_audience"></span>
+                    </div>
+
+                    <div class="field-group">
+                        <label class="field-label">Brand Voice</label>
+                        <div class="multiselect" id="brandVoiceSelect">
+                            <div class="multiselect-trigger" id="brandVoiceTrigger" tabindex="0" role="button" aria-expanded="false" aria-haspopup="listbox">
+                                <div class="multiselect-tags" id="brandVoiceTags">
+                                    <span class="multiselect-placeholder">Select brand tones...</span>
+                                </div>
+                                <svg class="multiselect-arrow" viewBox="0 0 20 20" fill="none">
+                                    <path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </div>
+                            <div class="multiselect-dropdown" id="brandVoiceDropdown" role="listbox" aria-multiselectable="true">
+                                <div class="dropdown-search-wrap">
+                                    <input type="text" class="dropdown-search" id="voiceSearch" placeholder="Search tones..." autocomplete="off">
+                                </div>
+                                <ul class="dropdown-list" id="voiceList">
+                                    <!-- Populated by JS -->
+                                </ul>
+                            </div>
+                        </div>
+                        <input type="hidden" id="brand_voice" name="brand_voice" value="">
+                    </div>
+
+                    <div class="field-group field-row">
+                        <div class="field-half">
+                            <label class="field-label" for="output_language">Output Language</label>
+                            <div class="select-wrap">
+                                <select id="output_language" name="output_language" class="field-input field-select">
+                                    <option value="English">🇬🇧 English</option>
+                                    <option value="Arabic">🇸🇦 Arabic</option>
+                                </select>
+                                <svg class="select-arrow" viewBox="0 0 20 20" fill="none">
+                                    <path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn-generate" id="generateBtn">
+                        <span class="btn-text">Generate Campaign</span>
+                        <span class="btn-loader" aria-hidden="true"></span>
+                        <svg class="btn-icon" viewBox="0 0 20 20" fill="none">
+                            <path d="M4 10h12M11 5l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+
+                </form>
+            </section>
+
+            <!-- Output Panel -->
+            <section class="card output-card" id="outputCard">
+                <div class="card-label">Campaign Output</div>
+
+                <div class="output-idle" id="outputIdle">
+                    <div class="idle-icon">
+                        <svg viewBox="0 0 48 48" fill="none">
+                            <circle cx="24" cy="24" r="20" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 3"/>
+                            <path d="M16 24l5 5 11-11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                    <p>Fill in the brief and generate<br>your campaign</p>
+                </div>
+
+                <div class="output-active" id="outputActive" style="display:none">
+                    <div class="steps-list" id="stepsList"></div>
+                    <div class="narrative-block" id="narrativeBlock" style="display:none">
+                        <div class="narrative-label">
+                            <svg viewBox="0 0 16 16" fill="none">
+                                <path d="M2 4h12M2 8h8M2 12h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                            </svg>
+                            Campaign Narrative
+                        </div>
+                        <div class="narrative-text" id="narrativeText"></div>
+                        <button class="btn-copy" id="copyBtn" title="Copy to clipboard">
+                            <svg viewBox="0 0 16 16" fill="none">
+                                <rect x="5" y="5" width="9" height="9" rx="1.5" stroke="currentColor" stroke-width="1.2"/>
+                                <path d="M3 11V3a1 1 0 011-1h8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                            </svg>
+                            Copy
+                        </button>
+                    </div>
+                    <div class="error-block" id="errorBlock" style="display:none">
+                        <svg viewBox="0 0 16 16" fill="none">
+                            <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.2"/>
+                            <path d="M8 5v4M8 11v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                        </svg>
+                        <span id="errorText"></span>
+                    </div>
+                </div>
+
+            </section>
+
+        </div>
+
+        <footer class="site-footer">
+            <span>Creative Campaign Agent</span>
+            <span class="footer-dot">·</span>
+            <span>Powered by GPT-4o mini with critic loops</span>
+        </footer>
+
+    </main>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
