@@ -1,6 +1,6 @@
 """
 CyclS Agent for Creative Campaign Generation
-Handles user interaction, intent detection, and orchestrates the campaign generation flow.
+Conversational agent that lets the LLM drive the interaction naturally.
 """
 
 import re
@@ -12,15 +12,7 @@ from pydantic import BaseModel
 
 
 def extract_session_id(messages):
-    """
-    Extract session ID from assistant messages.
-    
-    Args:
-        messages: List of message dicts from conversation history
-        
-    Returns:
-        Session ID string if found, None otherwise
-    """
+    """Extract session ID from assistant messages."""
     for msg in reversed(messages):
         if msg.get("role") == "assistant":
             content = msg.get("content", "")
@@ -31,159 +23,89 @@ def extract_session_id(messages):
     return None
 
 
-# ✅ CONTEXT MODEL
-class CampaignContext(BaseModel):
+def format_conversation_history(messages):
     """
-    Data model for campaign context extracted from user input.
-    
-    Attributes:
-        product: Name of the product/service
-        description: Additional product description
-        category: Product category (food, tech, fashion, etc.)
-        audiences: List of target audience descriptions
-        tone: Brand/campaign tone (professional, casual, humorous)
-        region: Geographic target region
-        goal: Campaign objective (awareness, engagement, conversion)
-        output_language: Language for output (English/Arabic)
+    Format cycls context messages into a clean conversation history
+    for the LLM to reason over.
     """
-    product: str | None = None
-    description: str | None = None
-    category: str | None = None
-    audiences: list[str] = []
-    tone: str | None = None
-    region: str | None = None
-    goal: str | None = None
-    output_language: str = "English"
+    history = []
+    for msg in messages:
+        role = msg.get("role", "")
+        content = msg.get("content", "")
+        if isinstance(content, str):
+            # Strip hidden session markers
+            content = re.sub(r"\u200B<!--s:.+?-->\u200B", "", content).strip()
+        if role in ("user", "assistant") and content:
+            history.append({"role": role, "content": content})
+    return history
 
 
-# ✅ PARSER
-async def parse_user_message(message: str) -> CampaignContext:
+class LLMDecision(BaseModel):
+    """What the LLM decided to do."""
+    action: str          # "converse" | "generate_campaign"
+    reply: str           # conversational reply or empty string if generating
+    context: dict        # extracted campaign context if action is generate_campaign
+
+
+async def think(messages, last_message: str) -> LLMDecision:
     """
-    Parse user message to extract campaign context using GPT.
-    
-    Args:
-        message: User's input message
-        
-    Returns:
-        CampaignContext object with extracted fields
-        
-    Note:
-        Uses GPT-4o-mini with JSON response format.
-        Missing fields are inferred or set to None.
+    Let the LLM reason over the full conversation and decide:
+    - Just reply conversationally (greet, ask a question, clarify, etc.)
+    - Generate a campaign (when enough info is available)
     """
     client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+    history = format_conversation_history(messages)
+
     r = await client.chat.completions.create(
         model="gpt-4o-mini",
-        temperature=0,
+        temperature=0.7,
         response_format={"type": "json_object"},
         messages=[
             {
                 "role": "system",
                 "content": (
-                    "Extract marketing campaign context from user input.\n\n"
-                    "Return JSON with fields:\n"
-                    "- product\n"
-                    "- description\n"
-                    "- category\n"
-                    "- audiences (array)\n"
-                    "- tone\n"
-                    "- region\n"
-                    "- goal (awareness, engagement, conversion)\n"
-                    "- output_language\n\n"
-                    "Rules:\n"
-                    "- Infer missing fields when possible\n"
-                    "- Do NOT fail if missing\n"
-                    "- audiences must be array\n"
-                    "Return ONLY JSON."
+                    "You are a friendly, expert marketing campaign strategist specializing in Saudi Arabia.\n\n"
+                    "Your job is to help users generate creative marketing campaigns.\n\n"
+                    "Based on the conversation history and the latest user message, decide what to do:\n\n"
+                    "Option 1 — Just reply conversationally:\n"
+                    "  - Greet the user warmly if it's the start\n"
+                    "  - Ask clarifying questions naturally (one at a time)\n"
+                    "  - Help them think through their product or audience\n"
+                    "  - Respond to general marketing questions\n"
+                    "  - Push back gently if something seems off\n\n"
+                    "Option 2 — Generate a campaign:\n"
+                    "  - Only when you have enough to work with: product name, some description, and a sense of the audience\n"
+                    "  - You do NOT need every field — use your expertise to fill gaps\n\n"
+                    "Return JSON:\n"
+                    "{\n"
+                    '  "action": "converse" or "generate_campaign",\n'
+                    '  "reply": "your conversational message to the user (empty string if generating)",\n'
+                    '  "context": {\n'
+                    '    "product": "",\n'
+                    '    "description": "",\n'
+                    '    "category": "",\n'
+                    '    "audiences": [],\n'
+                    '    "tone": "",\n'
+                    '    "region": "Riyadh, Saudi Arabia",\n'
+                    '    "goal": "",\n'
+                    '    "output_language": "English or Arabic"\n'
+                    "  }\n"
+                    "}\n\n"
+                    "Be warm, concise, and human. Never list all missing fields at once."
                 ),
             },
-            {"role": "user", "content": message},
+            *history,
+            {"role": "user", "content": last_message},
         ],
     )
 
     data = json.loads(r.choices[0].message.content)
-    return CampaignContext(**data)
-
-
-async def detect_intent(message: str):
-    """
-    Detect user intent from message.
-    
-    Args:
-        message: User's input message
-        
-    Returns:
-        "campaign_request" for campaign creation, "general_question" for general queries
-    """
-    client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-    r = await client.chat.completions.create(
-        model="gpt-4o-mini",
-        temperature=0,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "Classify user intent:\n"
-                    "1. campaign_request\n"
-                    "2. general_question\n\n"
-                    "Return ONLY one word."
-                ),
-            },
-            {"role": "user", "content": message},
-        ],
+    return LLMDecision(
+        action=data.get("action", "converse"),
+        reply=data.get("reply", ""),
+        context=data.get("context", {}),
     )
-
-    return r.choices[0].message.content.strip()
-
-
-async def generate_followup_question(ctx, original_message: str):
-    """
-    Generate a follow-up question when critical campaign information is missing.
-    
-    Args:
-        ctx: Current CampaignContext object
-        original_message: Original user message
-        
-    Returns:
-        Question string or "NO_QUESTION" if no clarification needed
-        
-    Priority order: Goal -> Audience -> Positioning
-    """
-    client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-    r = await client.chat.completions.create(
-        model="gpt-4o-mini",
-        temperature=0,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You are a marketing strategist focused on Riyadh, Saudi Arabia.\n\n"
-                    "Decide if a clarification question is needed.\n\n"
-                    "You can ask ONLY ONE question if critical info is missing.\n\n"
-                    "Priority:\n"
-                    "1. Goal (awareness vs conversion)\n"
-                    "2. Audience specificity\n"
-                    "3. Positioning (premium vs affordable vs trendy)\n\n"
-                    "Rules:\n"
-                    "- Ask only if necessary\n"
-                    "- Keep it short\n"
-                    "- If no question needed, return: NO_QUESTION\n"
-                ),
-            },
-            {
-                "role": "user",
-                "content": json.dumps({
-                    "context": ctx.model_dump(),
-                    "message": original_message
-                })
-            },
-        ],
-    )
-
-    return r.choices[0].message.content.strip()
 
 
 @cycls.agent(
@@ -192,70 +114,109 @@ async def generate_followup_question(ctx, original_message: str):
     memory="2Gi",
 )
 async def creative_campaign_agent(context):
-    """
-    Main CyclS agent for creative campaign generation.
-    
-    Flow:
-    1. Parse user message into CampaignContext
-    2. Load memory from previous campaigns
-    3. Generate campaign via ai_service.run_campaign()
-    4. Stream results back to user
-    
-    Args:
-        context: CyclS context object containing messages, session info, etc.
-        
-    Yields:
-        Various message types: thinking status, step updates, narrative content
-    """
     from app.services.ai_service import run_campaign
     from app.services.memory import load_memory
 
-    # Initial status
-    yield {"type": "thinking", "thinking": "Analyzing your campaign request..."}
-
-    # Extract session ID for maintaining conversation state
     session_id = extract_session_id(context.messages)
 
-    # Parse user message into structured context
-    try:
-        req = await parse_user_message(context.last_message)
-        yield {"type": "step", "step": f"Parsed campaign context"}
-    except Exception as e:
-        yield {"type": "thinking", "thinking": "Failed to parse.", "done": True}
-        yield f"Error: {str(e)}"
+    yield {"type": "thinking", "thinking": "Thinking..."}
+
+    # Check API key first
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        yield {"type": "thinking", "thinking": "Done.", "done": True}
+        yield "❌ Error: OpenAI API key not found. Please set OPENAI_API_KEY environment variable."
         return
 
-    # Load memory from previous campaigns for context
+    # Let the LLM reason over the full conversation and decide what to do
+    try:
+        # Add timeout to prevent hanging
+        import asyncio
+        decision = await asyncio.wait_for(think(context.messages, context.last_message), timeout=30.0)
+    except asyncio.TimeoutError:
+        yield {"type": "thinking", "thinking": "Done.", "done": True}
+        yield "❌ Error: Request timed out. Please try again."
+        return
+    except Exception as e:
+        yield {"type": "thinking", "thinking": "Done.", "done": True}
+        error_msg = str(e)
+        if "connection" in error_msg.lower():
+            yield "❌ Connection error: Unable to reach OpenAI API. Please check your internet connection and API key."
+        else:
+            yield f"❌ Error: {error_msg}"
+        return
+
+    # ── Option 1: Just have a conversation ──────────────────────────────────
+    if decision.action == "converse":
+        yield {"type": "thinking", "thinking": "Done.", "done": True}
+        yield decision.reply
+        if session_id:
+            yield f"\u200B<!--s:{session_id}-->\u200B"
+        return
+
+    # ── Option 2: Generate a campaign ───────────────────────────────────────
+    if decision.reply:
+        # LLM may want to say something before generating (e.g. "Great, let me work on that!")
+        yield decision.reply + "\n\n"
+
+    # Build a simple namespace object from the LLM-extracted context
+    # so ai_service.run_campaign() receives the right shape
+    class Req:
+        def __init__(self, ctx: dict):
+            # Core fields expected by ai_service
+            self.product = ctx.get("product") or "Product"
+            self.description = ctx.get("description") or ""
+            self.category = ctx.get("category") or ""
+            self.audiences = ctx.get("audiences") or []
+            self.tone = ctx.get("tone") or ctx.get("brand_voice") or "Modern, culturally relevant, Saudi-focused"
+            self.region = ctx.get("region") or "Riyadh, Saudi Arabia"
+            self.goal = ctx.get("goal") or "awareness"
+            self.output_language = ctx.get("output_language") or "English"
+            
+            # Legacy/compatibility fields (in case any code expects these)
+            self.product_name = self.product
+            self.product_desc = self.description
+            self.target_audience = ", ".join(self.audiences) if self.audiences else "General audience"
+            self.brand_voice = self.tone
+
+        def model_dump(self):
+            return {
+                "product": self.product,
+                "description": self.description,
+                "category": self.category,
+                "audiences": self.audiences,
+                "tone": self.tone,
+                "region": self.region,
+                "goal": self.goal,
+                "output_language": self.output_language,
+            }
+
+    req = Req(decision.context)
+
     memory = load_memory()
     yield {"type": "step", "step": f"Loaded memory: {len(memory)} campaigns"}
 
-    # Generate campaign and stream results
     try:
         async for chunk in run_campaign(req):
             if isinstance(chunk, dict):
                 if chunk.get("type") == "step":
-                    # Progress update
                     yield {"type": "step", "step": chunk.get("content", "")}
                 elif chunk.get("type") == "narrative":
-                    # Final campaign output
                     yield {"type": "thinking", "thinking": "Done.", "done": True}
                     content = chunk.get("content", "").replace("<br>", "\n")
                     yield content
                 elif chunk.get("type") == "error":
-                    # Error handling
                     yield {"type": "thinking", "thinking": "Error occurred.", "done": True}
                     yield chunk.get("content", "")
             else:
-                # Pass through other chunk types
                 yield chunk
     except Exception as e:
         yield {"type": "thinking", "thinking": "Error occurred.", "done": True}
         yield str(e)
 
-    # Append session ID for conversation continuity
     if session_id:
         yield f"\u200B<!--s:{session_id}-->\u200B"
 
 
-# creative_campaign_agent.local()
-creative_campaign_agent.deploy()
+creative_campaign_agent.local()
+# creative_campaign_agent.deploy()
